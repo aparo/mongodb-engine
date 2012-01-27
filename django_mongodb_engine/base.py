@@ -6,6 +6,7 @@ from django.conf import settings
 
 from pymongo.connection import Connection
 from pymongo.collection import Collection
+from pymongo.objectid import ObjectId, InvalidId
 
 from .creation import DatabaseCreation
 from .utils import CollectionDebugWrapper
@@ -68,6 +69,77 @@ class DatabaseOperations(NonrelDatabaseOperations):
             return None
         return datetime(1, 1, 1, value.hour, value.minute, value.second,
                                  value.microsecond)
+
+    @safe_call
+    def value_for_db(self, value, field, field_kind, db_type, lookup):
+        """
+        Converts key values to ObjectIds, recursively converts collections.
+
+        Let everything else pass to PyMongo -- when it's used it will
+        raise an exception if it got anything not acceptable.
+
+        TODO: Safe_call (issue #7): it should be enough to raise
+              DatabaseError rather than reraise InvalidId here;
+              no other PyMongo exception can be raised here.
+        """
+
+        # Parent can handle iterable fields and Django wrappers.
+        value = super(DatabaseOperations, self).value_for_db(
+            value, field, field_kind, db_type, lookup)
+
+        # Anything with the "key" db_type is converted to an ObjectId.
+        if db_type == 'key':
+
+            # When doing batch deletes we may be asked to convert a
+            # list of keys at once.
+            if isinstance(value, (list, tuple, set)):
+                return [self.value_for_db(subvalue, field,
+                                          field_kind, db_type, lookup)
+                        for subvalue in value]
+
+            try:
+                return ObjectId(value)
+            except InvalidId:
+                # Provide a better message for invalid IDs.
+                assert isinstance(value, unicode)
+                if len(value) > 13:
+                    value = value[:10] + '...'
+                msg = "AutoField (default primary key) values must be strings " \
+                      "representing an ObjectId on MongoDB (got %r instead)" % value
+                if field.model._meta.db_table == 'django_site':
+                    # Also provide some useful tips for (very common) issues
+                    # with settings.SITE_ID.
+                    msg += ". Please make sure your SITE_ID contains a valid ObjectId string."
+                raise InvalidId(msg)
+
+        return value
+
+    @safe_call
+    def value_from_db(self, value, field, field_kind, db_type):
+        """
+        Deconverts keys (including keys in collections).
+        Deconverts dates and times converted through value_to_db_*.
+        """
+
+        # It is *crucial* that these are written as direct checks --
+        # when value is an instance of serializer.LazyModelInstance
+        # calling its __eq__ method does a database query.
+        if value is None or value is NOT_PROVIDED:
+            return None
+
+        if db_type == 'key':
+            value = unicode(value)
+
+        if db_type == 'date':
+            value = datetime.date(value.year, value.month, value.day)
+
+        if db_type == 'time':
+            value = datetime.time(value.hour, value.minute, value.second,
+                                 value.microsecond)
+
+        return super(DatabaseOperations, self).value_from_db(
+            value, field, field_kind, db_type)
+
 
 class DatabaseValidation(NonrelDatabaseValidation):
     pass

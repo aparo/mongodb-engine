@@ -15,7 +15,6 @@ from django.utils.tree import Node
 
 from pymongo.errors import PyMongoError, DuplicateKeyError
 from pymongo import ASCENDING, DESCENDING
-from pymongo.objectid import ObjectId, InvalidId
 
 from djangotoolbox.db.basecompiler import NonrelQuery, NonrelCompiler, \
     NonrelInsertCompiler, NonrelUpdateCompiler, NonrelDeleteCompiler
@@ -161,7 +160,7 @@ class MongoQuery(NonrelQuery):
 
                 continue
 
-            column, lookup_type, db_type, value = self._decode_child(child)
+            column, lookup_type, value, field = self._decode_child(child)
 
             if lookup_type in ('month', 'day'):
                 raise DatabaseError("MongoDB does not support month/day queries")
@@ -174,7 +173,6 @@ class MongoQuery(NonrelQuery):
             existing = subquery.get(column)
 
             if isinstance(value, A):
-                field = first(lambda field: field.column == column, self.fields)
                 column, value = value.as_q(field)
 
             if self._negated and lookup_type in NEGATED_OPERATORS_MAP:
@@ -188,7 +186,8 @@ class MongoQuery(NonrelQuery):
             if lookup_type == 'isnull':
                 lookup = op_func(value)
             else:
-                lookup = op_func(self.convert_value_for_db(db_type, value))
+                lookup = op_func(
+                    self.compiler.value_for_db(value, field, True))
 
             if existing is None:
                 if self._negated and not already_negated:
@@ -248,6 +247,7 @@ class MongoQuery(NonrelQuery):
         if filters.negated:
             self._negated = not self._negated
 
+
 class SQLCompiler(NonrelCompiler):
     """
     A simple query: no joins, no distinct, etc.
@@ -256,84 +256,6 @@ class SQLCompiler(NonrelCompiler):
 
     def get_collection(self):
         return self.connection.get_collection(self.query.get_meta().db_table)
-
-    def _split_db_type(self, db_type):
-        try:
-            db_type, db_subtype = db_type.split(':', 1)
-        except ValueError:
-            db_subtype = None
-        return db_type, db_subtype
-
-    @safe_call # see #7
-    def convert_value_for_db(self, db_type, value):
-        if db_type is None or value is None:
-            return value
-
-        db_type, db_subtype = self._split_db_type(db_type)
-        if db_subtype is not None:
-            if isinstance(value, (set, list, tuple)):
-                # Sets are converted to lists here because MongoDB has no sets.
-                return [self.convert_value_for_db(db_subtype, subvalue)
-                        for subvalue in value]
-            elif isinstance(value, dict):
-                return dict((key, self.convert_value_for_db(db_subtype, subvalue))
-                            for key, subvalue in value.iteritems())
-
-        if isinstance(value, (set, list, tuple)):
-            # most likely a list of ObjectIds when doing a .delete() query
-            return [self.convert_value_for_db(db_type, val) for val in value]
-
-        if db_type == 'key':
-            try:
-                return ObjectId(value)
-            except InvalidId:
-                # Provide a better message for invalid IDs
-                assert isinstance(value, unicode)
-                if len(value) > 13:
-                    value = value[:10] + '...'
-                msg = "AutoField (default primary key) values must be strings " \
-                      "representing an ObjectId on MongoDB (got %r instead)" % value
-                if self.query.model._meta.db_table == 'django_site':
-                    # Also provide some useful tips for (very common) issues
-                    # with settings.SITE_ID.
-                    msg += ". Please make sure your SITE_ID contains a valid ObjectId string."
-                raise InvalidId(msg)
-
-        # Pass values of any type not covered above as they are.
-        # PyMongo will complain if they can't be encoded.
-        return value
-
-    @safe_call # see #7
-    def convert_value_from_db(self, db_type, value):
-        if db_type is None:
-            return value
-
-        if value is None or value is NOT_PROVIDED:
-            # ^^^ it is *crucial* that this is not written as 'in (None, NOT_PROVIDED)'
-            # because that would call value's __eq__ method, which in case value
-            # is an instance of serializer.LazyModelInstance does a database query.
-            return None
-
-        db_type, db_subtype = self._split_db_type(db_type)
-        if db_subtype is not None:
-            for field, type_ in [('SetField', set), ('ListField', list)]:
-                if db_type == field:
-                    return type_(self.convert_value_from_db(db_subtype, subvalue)
-                                 for subvalue in value)
-            if db_type == 'DictField':
-                return dict((key, self.convert_value_from_db(db_subtype, subvalue))
-                            for key, subvalue in value.iteritems())
-
-        if db_type == 'key':
-            return unicode(value)
-
-        if db_type == 'date':
-            return datetime.date(value.year, value.month, value.day)
-
-        if db_type == 'time':
-            return datetime.time(value.hour, value.minute, value.second,
-                                 value.microsecond)
-        return value
 
     def _save(self, data, return_id=False):
         collection = self.get_collection()
