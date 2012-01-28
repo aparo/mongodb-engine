@@ -2,10 +2,11 @@ import copy
 import datetime
 import sys
 
-from django.db.backends.signals import connection_created
-from django.db.utils import DatabaseException
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
+from django.db.backends.signals import connection_created
+from django.db.models.fields import NOT_PROVIDED
+from django.db.utils import DatabaseException
 
 from djangotoolbox.db.base import \
     NonrelDatabaseClient, NonrelDatabaseFeatures, \
@@ -65,24 +66,17 @@ class DatabaseOperations(NonrelDatabaseOperations):
             return None
         return unicode(value)
 
-    def value_to_db_date(self, value):
-        if value is None:
-            return None
-        return datetime.datetime(value.year, value.month, value.day)
-
-    def value_to_db_time(self, value):
-        if value is None:
-            return None
-        return datetime.datetime(1, 1, 1, value.hour, value.minute,
-                                 value.second, value.microsecond)
-
     def value_for_db(self, value, field, field_kind, db_type, lookup):
         """
-        Converts key values to ObjectIds, recursively converts collections.
+        Allows parent to handle nonrel fields, convert AutoField
+        keys to ObjectIds and date and times to datetimes.
 
-        Let everything else pass to PyMongo -- when it's used it will
-        raise an exception if it got anything not acceptable.
+        Let everything else pass to PyMongo -- when the value is used
+        the driver will raise an exception if it got anything
+        unacceptable.
         """
+        if value is None:
+            return None
 
         # Parent can handle iterable fields and Django wrappers.
         value = super(DatabaseOperations, self).value_for_db(
@@ -114,12 +108,18 @@ class DatabaseOperations(NonrelDatabaseOperations):
                     msg += ". Please make sure your SITE_ID contains a valid ObjectId string."
                 raise DatabaseError(msg)
 
+        # PyMongo can only process datatimes?
+        elif db_type == 'date':
+            return datetime.datetime(value.year, value.month, value.day)
+        elif db_type == 'time':
+            return datetime.datetime(1, 1, 1, value.hour, value.minute,
+                                     value.second, value.microsecond)
+
         return value
 
     def value_from_db(self, value, field, field_kind, db_type):
         """
-        Deconverts keys (including keys in collections).
-        Deconverts dates and times converted through value_to_db_*.
+        Deconverts keys, dates and times (also in collections).
         """
 
         # It is *crucial* that these are written as direct checks --
@@ -128,15 +128,16 @@ class DatabaseOperations(NonrelDatabaseOperations):
         if value is None or value is NOT_PROVIDED:
             return None
 
+        # All keys have been turned into ObjectIds.
         if db_type == 'key':
             value = unicode(value)
 
-        if db_type == 'date':
-            value = datetime.datetime.date(value.year, value.month, value.day)
-
-        if db_type == 'time':
-            value = datetime.datetime.time(value.hour, value.minute,
-                                           value.second, value.microsecond)
+        # We've converted dates and times to datetimes.
+        elif db_type == 'date':
+            value = datetime.date(value.year, value.month, value.day)
+        elif db_type == 'time':
+            value = datetime.time(value.hour, value.minute, value.second,
+                                  value.microsecond)
 
         return super(DatabaseOperations, self).value_from_db(
             value, field, field_kind, db_type)

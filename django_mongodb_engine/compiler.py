@@ -1,20 +1,19 @@
 # XXX this file is a mess.  must. refactor.
+import datetime
+from functools import wraps
 import re
 import sys
-import datetime
 
-from functools import wraps
-
-from django.db.utils import DatabaseError, IntegrityError
-from django.db.models.fields import NOT_PROVIDED
 from django.db.models import F
+from django.db.models.fields import NOT_PROVIDED
 from django.db.models.sql import aggregates as sqlaggregates
 from django.db.models.sql.constants import MULTI
 from django.db.models.sql.where import OR
+from django.db.utils import DatabaseError, IntegrityError
 from django.utils.tree import Node
 
-from pymongo.errors import PyMongoError, DuplicateKeyError
 from pymongo import ASCENDING, DESCENDING
+from pymongo.errors import PyMongoError, DuplicateKeyError
 
 from djangotoolbox.db.basecompiler import NonrelQuery, NonrelCompiler, \
     NonrelInsertCompiler, NonrelUpdateCompiler, NonrelDeleteCompiler
@@ -22,6 +21,7 @@ from djangotoolbox.db.basecompiler import NonrelQuery, NonrelCompiler, \
 from .query import A
 from .aggregations import get_aggregation_class_by_name
 from .utils import safe_regex, first
+
 
 OPERATORS_MAP = {
     'exact':  lambda val: val,
