@@ -1,6 +1,6 @@
 from pymongo import DESCENDING
 
-from djangotoolbox.db.base import NonrelDatabaseCreation
+from djangotoolbox.db.creation import NonrelDatabaseCreation
 
 from .utils import make_index_list
 

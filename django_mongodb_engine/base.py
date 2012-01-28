@@ -5,8 +5,7 @@ import sys
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.db.backends.signals import connection_created
-from django.db.models.fields import NOT_PROVIDED
-from django.db.utils import DatabaseException
+from django.db.utils import DatabaseError
 
 from djangotoolbox.db.base import \
     NonrelDatabaseClient, NonrelDatabaseFeatures, \
@@ -121,6 +120,10 @@ class DatabaseOperations(NonrelDatabaseOperations):
         """
         Deconverts keys, dates and times (also in collections).
         """
+
+        # FIXME: Causes circular imports if put at the module level.
+        # TODO: How a value from the database be NOT_PROVIDED?
+        from django.db.models.fields import NOT_PROVIDED
 
         # It is *crucial* that these are written as direct checks --
         # when value is an instance of serializer.LazyModelInstance

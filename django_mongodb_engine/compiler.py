@@ -18,8 +18,8 @@ from pymongo.errors import PyMongoError, DuplicateKeyError
 from djangotoolbox.db.basecompiler import NonrelQuery, NonrelCompiler, \
     NonrelInsertCompiler, NonrelUpdateCompiler, NonrelDeleteCompiler
 
-from .query import A
 from .aggregations import get_aggregation_class_by_name
+from .query import A
 from .utils import safe_regex, first
 
 
