@@ -1,35 +1,36 @@
 import copy
+import datetime
 import sys
-from django.core.exceptions import ImproperlyConfigured
-from django.db.backends.signals import connection_created
-from django.conf import settings
 
-from pymongo.connection import Connection
+from django.db.backends.signals import connection_created
+from django.db.utils import DatabaseException
+from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
+
+from djangotoolbox.db.base import \
+    NonrelDatabaseClient, NonrelDatabaseFeatures, \
+    NonrelDatabaseIntrospection, NonrelDatabaseOperations, \
+    NonrelDatabaseValidation, NonrelDatabaseWrapper
+
 from pymongo.collection import Collection
+from pymongo.connection import Connection
 from pymongo.objectid import ObjectId, InvalidId
 
 from .creation import DatabaseCreation
 from .utils import CollectionDebugWrapper
 
-from djangotoolbox.db.base import (
-    NonrelDatabaseFeatures,
-    NonrelDatabaseWrapper,
-    NonrelDatabaseValidation,
-    NonrelDatabaseIntrospection,
-    NonrelDatabaseOperations
-)
-
-from datetime import datetime
 
 def _warn_deprecated(opt):
     import warnings
     warnings.warn("The %r option is deprecated as of version 0.4 in flavor of "
                   "the 'OPERATIONS' setting" % opt, PendingDeprecationWarning)
 
+
 class DatabaseFeatures(NonrelDatabaseFeatures):
     supports_microsecond_precision = False
-    supports_dicts = True
     supports_long_model_names = False
+    supports_dicts = True
+
 
 class DatabaseOperations(NonrelDatabaseOperations):
     compiler_module = __name__.rsplit('.', 1)[0] + '.compiler'
@@ -67,25 +68,20 @@ class DatabaseOperations(NonrelDatabaseOperations):
     def value_to_db_date(self, value):
         if value is None:
             return None
-        return datetime(value.year, value.month, value.day)
+        return datetime.datetime(value.year, value.month, value.day)
 
     def value_to_db_time(self, value):
         if value is None:
             return None
-        return datetime(1, 1, 1, value.hour, value.minute, value.second,
-                                 value.microsecond)
+        return datetime.datetime(1, 1, 1, value.hour, value.minute,
+                                 value.second, value.microsecond)
 
-    @safe_call
     def value_for_db(self, value, field, field_kind, db_type, lookup):
         """
         Converts key values to ObjectIds, recursively converts collections.
 
         Let everything else pass to PyMongo -- when it's used it will
         raise an exception if it got anything not acceptable.
-
-        TODO: Safe_call (issue #7): it should be enough to raise
-              DatabaseError rather than reraise InvalidId here;
-              no other PyMongo exception can be raised here.
         """
 
         # Parent can handle iterable fields and Django wrappers.
@@ -104,8 +100,9 @@ class DatabaseOperations(NonrelDatabaseOperations):
 
             try:
                 return ObjectId(value)
+
+            # Provide a better message for invalid IDs.
             except InvalidId:
-                # Provide a better message for invalid IDs.
                 assert isinstance(value, unicode)
                 if len(value) > 13:
                     value = value[:10] + '...'
@@ -115,11 +112,10 @@ class DatabaseOperations(NonrelDatabaseOperations):
                     # Also provide some useful tips for (very common) issues
                     # with settings.SITE_ID.
                     msg += ". Please make sure your SITE_ID contains a valid ObjectId string."
-                raise InvalidId(msg)
+                raise DatabaseError(msg)
 
         return value
 
-    @safe_call
     def value_from_db(self, value, field, field_kind, db_type):
         """
         Deconverts keys (including keys in collections).
@@ -136,18 +132,23 @@ class DatabaseOperations(NonrelDatabaseOperations):
             value = unicode(value)
 
         if db_type == 'date':
-            value = datetime.date(value.year, value.month, value.day)
+            value = datetime.datetime.date(value.year, value.month, value.day)
 
         if db_type == 'time':
-            value = datetime.time(value.hour, value.minute, value.second,
-                                 value.microsecond)
+            value = datetime.datetime.time(value.hour, value.minute,
+                                           value.second, value.microsecond)
 
         return super(DatabaseOperations, self).value_from_db(
             value, field, field_kind, db_type)
 
 
+class DatabaseClient(NonrelDatabaseClient):
+    pass
+
+
 class DatabaseValidation(NonrelDatabaseValidation):
     pass
+
 
 class DatabaseIntrospection(NonrelDatabaseIntrospection):
     def table_names(self):
@@ -156,6 +157,7 @@ class DatabaseIntrospection(NonrelDatabaseIntrospection):
     def sequence_list(self):
         # Only required for backends that use integer primary keys
         pass
+
 
 class DatabaseWrapper(NonrelDatabaseWrapper):
     def __init__(self, *args, **kwargs):
