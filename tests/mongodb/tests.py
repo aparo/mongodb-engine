@@ -5,7 +5,6 @@ from django.db.utils import DatabaseError, IntegrityError
 from django.db.models import Q
 from django.contrib.sites.models import Site
 
-from pymongo.objectid import InvalidId
 from pymongo import ASCENDING, DESCENDING
 from gridfs import GridFS, GridOut
 
@@ -69,10 +68,10 @@ class MongoDBEngineTests(TestCase):
     def test_nice_int_objectid_exception(self):
         msg = "AutoField \(default primary key\) values must be strings " \
               "representing an ObjectId on MongoDB \(got %r instead\)"
-        self.assertRaisesRegexp(InvalidId, msg % u'helloworld...',
+        self.assertRaisesRegexp(DatabaseError, msg % u'helloworld...',
                                 RawModel.objects.create, id='helloworldwhatsup')
         self.assertRaisesRegexp(
-            InvalidId, (msg % u'5') + ". Please make sure your SITE_ID contains a valid ObjectId.",
+            DatabaseError, (msg % u'5') + ". Please make sure your SITE_ID contains a valid ObjectId.",
             Site.objects.get, id='5'
         )
 
