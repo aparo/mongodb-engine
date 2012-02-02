@@ -13,6 +13,14 @@ class DatabaseCreation(NonrelDatabaseCreation):
         'SetField':     'list',
     })
 
+    def nonrel_db_type(self, field):
+        """
+        Mongo just uses the db_type defined for the field's kind ("key"
+        for AutoFields and ForeignKeys pointing at them, but not for
+        typed primary keys or their relations).
+        """
+        return field.db_type(connection=self.connection)
+
     def sql_indexes_for_model(self, model, termstyle):
         """ Creates indexes for all fields in ``model``. """
         meta = model._meta
