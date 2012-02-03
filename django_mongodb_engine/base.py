@@ -60,7 +60,7 @@ class DatabaseOperations(NonrelDatabaseOperations):
         return []
 
     def value_to_db_auto(self, value):
-        """Mongo uses string-based AutoFields."""
+        """Mongo uses string / ObjectId based AutoFields."""
         if value is None:
             return None
         return unicode(value)
@@ -121,14 +121,10 @@ class DatabaseOperations(NonrelDatabaseOperations):
         Deconverts keys, dates and times (also in collections).
         """
 
-        # FIXME: Causes circular imports if put at the module level.
-        # TODO: How a value from the database be NOT_PROVIDED?
-        from django.db.models.fields import NOT_PROVIDED
-
-        # It is *crucial* that these are written as direct checks --
+        # It is *crucial* that this is written as a direct check --
         # when value is an instance of serializer.LazyModelInstance
         # calling its __eq__ method does a database query.
-        if value is None or value is NOT_PROVIDED:
+        if value is None:
             return None
 
         # All keys have been turned into ObjectIds.
