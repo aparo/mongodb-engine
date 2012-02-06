@@ -29,7 +29,6 @@ def _warn_deprecated(opt):
 class DatabaseFeatures(NonrelDatabaseFeatures):
     supports_microsecond_precision = False
     supports_long_model_names = False
-    supports_dicts = True
 
 
 class DatabaseOperations(NonrelDatabaseOperations):
