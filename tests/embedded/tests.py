@@ -3,6 +3,7 @@ from django_mongodb_engine.query import A
 from .utils import TestCase, get_collection
 from .models import *
 
+
 class EmbeddedModelFieldTestCase(TestCase):
     def test_legacy_field(self):
         # LegacyModelField should behave like EmbeddedLegacyModelField for

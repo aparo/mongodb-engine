@@ -1,4 +1,5 @@
 from django.db import models
+
 from djangotoolbox.fields import DictField, EmbeddedModelField, \
     LegacyEmbeddedModelField
 
